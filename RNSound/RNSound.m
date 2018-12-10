@@ -1,4 +1,6 @@
 #import "RNSound.h"
+#import <React/RCTLog.h>
+
 
 #if __has_include("RCTUtils.h")
     #import "RCTUtils.h"
@@ -89,7 +91,7 @@ RCT_EXPORT_MODULE();
 
 -(NSArray<NSString *> *)supportedEvents
   {
-    return @[@"onPlayChange"];
+    return @[@"onPlayChange",@"timeUpdate"];
   }
 
 -(NSDictionary *)constantsToExport {
@@ -215,12 +217,29 @@ RCT_EXPORT_METHOD(prepare:(NSString*)fileName
   }
 }
 
+- (void)timeUpdate:(NSTimer *)timer {
+    NSNumber* playerKey = [[timer userInfo] objectForKey:@"playerKey"];
+    AVAudioPlayer* player = [self playerForKey:playerKey];
+    [self sendEventWithName:@"timeUpdate" body:@{@"currentTime": @(player.currentTime), @"isPlaying": @(player.isPlaying), @"playerKey": playerKey}];
+}
+
+NSTimer *timer = nil;
+
+
 RCT_EXPORT_METHOD(play:(nonnull NSNumber*)key withCallback:(RCTResponseSenderBlock)callback) {
   [[AVAudioSession sharedInstance] setActive:YES error:nil];
   [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(audioSessionChangeObserver:) name:AVAudioSessionRouteChangeNotification object:nil];
   self._key = key;
   AVAudioPlayer* player = [self playerForKey:key];
+
   if (player) {
+      RCTLogInfo(@"about to create timer");
+      if (!timer) {
+          RCTLogInfo(@"creating timer");
+
+          timer = [NSTimer timerWithTimeInterval:0.5 target:self selector:@selector(timeUpdate:) userInfo:@{@"playerKey": key} repeats:YES];
+          [[NSRunLoop mainRunLoop] addTimer:timer forMode:NSRunLoopCommonModes];
+      }
     [[self callbackPool] setObject:[callback copy] forKey:key];
     [player play];
     [self setOnPlay:YES forPlayerKey:key];
@@ -230,6 +249,11 @@ RCT_EXPORT_METHOD(play:(nonnull NSNumber*)key withCallback:(RCTResponseSenderBlo
 RCT_EXPORT_METHOD(pause:(nonnull NSNumber*)key withCallback:(RCTResponseSenderBlock)callback) {
   AVAudioPlayer* player = [self playerForKey:key];
   if (player) {
+    if (timer) {
+        [timer invalidate];
+        timer = nil;
+    }
+
     [player pause];
     callback(@[]);
   }
@@ -308,4 +332,5 @@ RCT_EXPORT_METHOD(getCurrentTime:(nonnull NSNumber*)key
 - (void)setOnPlay:(BOOL)isPlaying forPlayerKey:(nonnull NSNumber*)playerKey {
   [self sendEventWithName:@"onPlayChange" body:@{@"isPlaying": isPlaying ? @YES : @NO, @"playerKey": playerKey}];
 }
+
 @end
