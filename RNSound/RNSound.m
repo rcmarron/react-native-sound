@@ -15,6 +15,32 @@
 
 @synthesize _key = _key;
 
++ (id)allocWithZone:(NSZone *)zone {
+    static RNSound *sharedInstance = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        sharedInstance = [super allocWithZone:zone];
+    });
+    return sharedInstance;
+}
+
+- (NSArray<NSString *> *)supportedEvents
+{
+    return @[@"onPlayChange",@"timeUpdate"];
+}
+
+- (void) sendOnPlayUpdate:(BOOL)isPlaying forPlayerKey:(nonnull NSNumber*)forPlayerKey {
+    [self sendEventWithName:@"onPlayChange" body:@{@"isPlaying": isPlaying ? @YES : @NO, @"playerKey": forPlayerKey}];
+}
+
+- (void) sendTimeUpdate:(double)currentTime isPlaying:(BOOL)isPlaying forPlayerKey:(nonnull NSNumber*)playerKey {
+    [self sendEventWithName:@"timeUpdate" body:@{@"currentTime": @(currentTime), @"isPlaying": @(isPlaying), @"playerKey": playerKey}];
+}
+
+
+
+
+
 - (void)audioSessionChangeObserver:(NSNotification *)notification{
     NSDictionary* userInfo = notification.userInfo;
     AVAudioSessionRouteChangeReason audioSessionRouteChangeReason = [userInfo[@"AVAudioSessionRouteChangeReasonKey"] longValue];
@@ -78,7 +104,8 @@
   if (key == nil) return;
 
   @synchronized(key) {
-    [self setOnPlay:NO forPlayerKey:key];
+    RNSound *eventManager = [RNSound allocWithZone: nil];
+    [eventManager sendOnPlayUpdate:NO forPlayerKey:key];
     RCTResponseSenderBlock callback = [self callbackForKey:key];
     if (callback) {
       callback(@[@(flag)]);
@@ -88,11 +115,6 @@
 }
 
 RCT_EXPORT_MODULE();
-
--(NSArray<NSString *> *)supportedEvents
-  {
-    return @[@"onPlayChange",@"timeUpdate"];
-  }
 
 -(NSDictionary *)constantsToExport {
   return @{@"IsAndroid": [NSNumber numberWithBool:NO],
@@ -217,10 +239,16 @@ RCT_EXPORT_METHOD(prepare:(NSString*)fileName
   }
 }
 
+
 - (void)timeUpdate:(NSTimer *)timer {
     NSNumber* playerKey = [[timer userInfo] objectForKey:@"playerKey"];
     AVAudioPlayer* player = [self playerForKey:playerKey];
-    [self sendEventWithName:@"timeUpdate" body:@{@"currentTime": @(player.currentTime), @"isPlaying": @(player.isPlaying), @"playerKey": playerKey}];
+//    [self sendEventWithName:@"timeUpdate" body:@{@"currentTime": @(player.currentTime), @"isPlaying": @(player.isPlaying), @"playerKey": playerKey}];
+    RNSound *eventManager = [RNSound allocWithZone: nil];
+//    [eventManager sendOnPlayUpdate:YES forPlayerKey:key];
+
+    [eventManager sendTimeUpdate:player.currentTime isPlaying:player.isPlaying forPlayerKey:playerKey];
+//    [eventManager sendTimeUpdate]
 }
 
 NSTimer *timer = nil;
@@ -242,7 +270,10 @@ RCT_EXPORT_METHOD(play:(nonnull NSNumber*)key withCallback:(RCTResponseSenderBlo
       }
     [[self callbackPool] setObject:[callback copy] forKey:key];
     [player play];
-    [self setOnPlay:YES forPlayerKey:key];
+
+    RNSound *eventManager = [RNSound allocWithZone: nil];
+    [eventManager sendOnPlayUpdate:YES forPlayerKey:key];
+//    [self setOnPlay:YES forPlayerKey:key];
   }
 }
 
@@ -328,9 +359,6 @@ RCT_EXPORT_METHOD(getCurrentTime:(nonnull NSNumber*)key
 + (BOOL)requiresMainQueueSetup
 {
     return YES;
-}
-- (void)setOnPlay:(BOOL)isPlaying forPlayerKey:(nonnull NSNumber*)playerKey {
-  [self sendEventWithName:@"onPlayChange" body:@{@"isPlaying": isPlaying ? @YES : @NO, @"playerKey": playerKey}];
 }
 
 @end
