@@ -152,6 +152,10 @@ Sound.prototype.release = function () {
         this.onPlaySubscription.remove();
         this.onPlaySubscription = null;
       }
+      if (this.onTimeUpdateSubscription != null) {
+        this.onTimeUpdateSubscription.remove();
+        this.onTimeUpdateSubscription = null;
+      }
     }
   }
   return this;

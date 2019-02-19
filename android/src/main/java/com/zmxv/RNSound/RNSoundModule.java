@@ -16,11 +16,14 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.WritableMap;
+import com.facebook.react.modules.core.DeviceEventManagerModule;
 import com.facebook.react.modules.core.ExceptionsManagerModule;
 
 import java.io.File;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.io.IOException;
 
 import android.util.Log;
@@ -33,6 +36,9 @@ public class RNSoundModule extends ReactContextBaseJavaModule implements AudioMa
   Boolean mixWithOthers = true;
   Double focusedPlayerKey;
   Boolean wasPlayingBeforeFocusChange = false;
+  Timer timer = new Timer();
+  PlayerTimeTimerTask timerTask;
+
 
   public RNSoundModule(ReactApplicationContext context) {
     super(context);
@@ -196,7 +202,7 @@ public class RNSoundModule extends ReactContextBaseJavaModule implements AudioMa
       }
       return mediaPlayer;
     }
-    
+
     return null;
   }
 
@@ -258,6 +264,8 @@ public class RNSoundModule extends ReactContextBaseJavaModule implements AudioMa
     });
     player.start();
     setOnPlay(true, key);
+    timerTask = new PlayerTimeTimerTask(this.context,key,player);
+    timer.schedule(timerTask , 0, 500);
   }
 
   @ReactMethod
@@ -265,6 +273,9 @@ public class RNSoundModule extends ReactContextBaseJavaModule implements AudioMa
     MediaPlayer player = this.playerPool.get(key);
     if (player != null && player.isPlaying()) {
       player.pause();
+      if(timerTask != null) {
+        timerTask.cancel();
+      }
     }
 
     if (callback != null) {
@@ -436,4 +447,37 @@ public class RNSoundModule extends ReactContextBaseJavaModule implements AudioMa
     constants.put("IsAndroid", true);
     return constants;
   }
+
+}
+
+class PlayerTimeTimerTask extends TimerTask  {
+    Double key;
+    MediaPlayer player;
+    ReactContext context;
+
+    public PlayerTimeTimerTask(ReactContext context, Double key, MediaPlayer player) {
+        this.key = key;
+        this.player = player;
+        this.context = context;
+    }
+
+    @Override
+    public void run() {
+      try {
+        WritableMap params = Arguments.createMap();
+        params.putDouble("currentTime", this.player.getCurrentPosition() * .001);
+        params.putBoolean("isPlaying", this.player.isPlaying());
+        params.putDouble("playerKey", this.key);
+        sendEvent("timeUpdate", params);
+      } catch (Exception e){
+        e.printStackTrace();
+      }
+    }
+
+    private void sendEvent(String eventName,
+                           WritableMap params) {
+        this.context
+                .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                .emit(eventName, params);
+    }
 }
